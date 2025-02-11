@@ -1,0 +1,98 @@
+syntax = "proto3";
+
+package gophkeeper;
+
+option go_package = "github.com/golangTroshin/gophkeeper/grpc/gophkeeper";
+
+service GophKeeperService {
+  rpc UserExists(UserExistsRequest) returns (UserExistsResponse);
+  rpc RegisterUser(RegisterUserRequest) returns (RegisterUserResponse);
+  rpc AuthenticateUser(AuthenticateUserRequest) returns (AuthenticateUserResponse);
+  rpc MasterSeedRetrieve(MasterSeedRetrieveRequest) returns (MasterSeedRetrieveResponse);
+  rpc StoreData(StoreDataRequest) returns (StoreDataResponse);
+  rpc RetrieveData(RetrieveDataRequest) returns (RetrieveDataResponse);
+}
+
+// Enum for predefined data types
+enum DataType {
+  CREDENTIALS = 0;
+  CARD = 1;
+  TEXT = 2;
+  BINARY = 3;
+}
+
+// Check if User Exists
+message UserExistsRequest {
+  string username = 1;
+}
+
+message UserExistsResponse {
+  bool exists = 1;
+  string message = 2;
+  bool success = 3;
+}
+
+// User Registration
+message RegisterUserRequest {
+  string username = 1;
+  string password = 2;
+  string seed = 3;
+}
+
+message RegisterUserResponse {
+  bool success = 1;
+  string token = 2;
+  string message = 3;
+}
+
+// User Authentication
+message AuthenticateUserRequest {
+  string username = 1;
+  string password = 2;
+}
+
+message AuthenticateUserResponse {
+  bool success = 1;
+  string token = 2;
+  string message = 3;
+}
+
+// Retrieve Master Seed
+message MasterSeedRetrieveRequest {
+  string token = 1;
+}
+
+message MasterSeedRetrieveResponse {
+  bool success = 1;
+  string master_seed = 2;
+  string message = 3;
+}
+
+// Store Data
+message StoreDataRequest {
+  string token = 1;
+  DataType data_type = 2;
+  string metadata = 3;
+  bytes data = 4;
+}
+
+message StoreDataResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+// Retrieve Data
+message RetrieveDataRequest {
+  string token = 1;
+  DataType filter = 2;
+}
+
+message RetrieveDataResponse {
+  repeated DataItem items = 1;
+}
+
+message DataItem {
+  DataType data_type = 1;
+  string metadata = 2;
+  bytes data = 3;
+}
