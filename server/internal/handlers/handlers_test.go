@@ -7,29 +7,31 @@ import (
 	pb "github.com/golangTroshin/gophkeeper/grpc"
 	"github.com/golangTroshin/gophkeeper/server/internal/handlers"
 	"github.com/golangTroshin/gophkeeper/server/internal/models"
+	"github.com/golangTroshin/gophkeeper/server/internal/repository"
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
 )
 
-var testDB *gorm.DB
-var server *handlers.GophKeeperServer
+var testRepo repository.Repository
+var testServer *handlers.GophKeeperServer
 
 // setupTestDB initializes an in-memory SQLite database for testing
 func setupTestDB(t *testing.T) {
 	var err error
-	testDB, err = gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open(":memory:"), &gorm.Config{})
 	if err != nil {
 		t.Fatalf("Failed to create in-memory database: %v", err)
 	}
 
 	// Run migrations
-	err = testDB.AutoMigrate(&models.User{}, &models.Vault{})
+	err = db.AutoMigrate(&models.User{}, &models.Vault{})
 	if err != nil {
 		t.Fatalf("Database migration failed: %v", err)
 	}
 
-	// Create the test server instance
-	server = &handlers.GophKeeperServer{DB: testDB}
+	// Initialize repository and server with test DB
+	testRepo = repository.NewRepository(db)
+	testServer = &handlers.GophKeeperServer{Repo: testRepo}
 }
 
 // TestRegisterUser ensures a user is created successfully
@@ -42,7 +44,7 @@ func TestRegisterUser(t *testing.T) {
 		Seed:     "testseed",
 	}
 
-	res, err := server.RegisterUser(context.Background(), req)
+	res, err := testServer.RegisterUser(context.Background(), req)
 	if err != nil {
 		t.Fatalf("Failed to register user: %v", err)
 	}
@@ -62,7 +64,7 @@ func TestAuthenticateUser(t *testing.T) {
 		Password: "authpass",
 		Seed:     "authseed",
 	}
-	_, _ = server.RegisterUser(context.Background(), req)
+	_, _ = testServer.RegisterUser(context.Background(), req)
 
 	// Authenticate user
 	authReq := &pb.AuthenticateUserRequest{
@@ -70,7 +72,7 @@ func TestAuthenticateUser(t *testing.T) {
 		Password: "authpass",
 	}
 
-	res, err := server.AuthenticateUser(context.Background(), authReq)
+	res, err := testServer.AuthenticateUser(context.Background(), authReq)
 	if err != nil {
 		t.Fatalf("Failed to authenticate user: %v", err)
 	}
@@ -80,12 +82,13 @@ func TestAuthenticateUser(t *testing.T) {
 	}
 }
 
-// TestVerifyToken ensures token verification works correctly
 func TestVerifyToken(t *testing.T) {
 	token, err := handlers.GenerateJWT(1)
 	if err != nil {
 		t.Fatalf("Failed to generate JWT: %v", err)
 	}
+
+	t.Logf("Generated Token: %s", token) // Log the token for debugging
 
 	userID, err := handlers.VerifyToken(token)
 	if err != nil {
@@ -107,7 +110,7 @@ func TestStoreAndRetrieveData(t *testing.T) {
 		Password: "datapass",
 		Seed:     "dataseed",
 	}
-	regRes, _ := server.RegisterUser(context.Background(), req)
+	regRes, _ := testServer.RegisterUser(context.Background(), req)
 
 	// Store data
 	storeReq := &pb.StoreDataRequest{
@@ -117,7 +120,7 @@ func TestStoreAndRetrieveData(t *testing.T) {
 		Data:     []byte("Encrypted data"),
 	}
 
-	storeRes, err := server.StoreData(context.Background(), storeReq)
+	storeRes, err := testServer.StoreData(context.Background(), storeReq)
 	if err != nil {
 		t.Fatalf("Failed to store data: %v", err)
 	}
@@ -132,12 +135,36 @@ func TestStoreAndRetrieveData(t *testing.T) {
 		Filter: pb.DataType_TEXT,
 	}
 
-	retrieveRes, err := server.RetrieveData(context.Background(), retrieveReq)
+	retrieveRes, err := testServer.RetrieveData(context.Background(), retrieveReq)
 	if err != nil {
 		t.Fatalf("Failed to retrieve data: %v", err)
 	}
 
 	if len(retrieveRes.Items) == 0 {
 		t.Fatal("Expected retrieved data, got none")
+	}
+}
+
+// TestMasterSeedRetrieve ensures the master seed is correctly retrieved
+func TestMasterSeedRetrieve(t *testing.T) {
+	setupTestDB(t)
+
+	// Register user
+	req := &pb.RegisterUserRequest{
+		Username: "seeduser",
+		Password: "seedpass",
+		Seed:     "test-master-seed",
+	}
+	regRes, _ := testServer.RegisterUser(context.Background(), req)
+
+	// Retrieve master seed
+	seedReq := &pb.MasterSeedRetrieveRequest{Token: regRes.Token}
+	seedRes, err := testServer.MasterSeedRetrieve(context.Background(), seedReq)
+	if err != nil {
+		t.Fatalf("Failed to retrieve master seed: %v", err)
+	}
+
+	if !seedRes.Success || seedRes.MasterSeed != "test-master-seed" {
+		t.Fatalf("Master seed retrieval failed: expected 'test-master-seed', got '%s'", seedRes.MasterSeed)
 	}
 }
